@@ -1,6 +1,12 @@
 # stefanzweifel/git-auto-commit-action
 
-Hardened GitHub Action by [Chainguard](https://www.chainguard.dev).
+Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at [https://github.com/stefanzweifel/git-auto-commit-action](https://github.com/stefanzweifel/git-auto-commit-action).
+
+## Versions
+
+| Version | Tag | Upstream commit |
+|---------|-----|-----------------|
+| v7.1.0 | [`v7.1.0`](https://github.com/chainguard-actions/git-auto-commit-action/tree/v7.1.0) | — |
 
 ## Privacy
 
