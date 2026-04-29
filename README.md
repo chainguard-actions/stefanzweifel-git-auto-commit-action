@@ -1,5 +1,7 @@
 # stefanzweifel/git-auto-commit-action
 
+Automatically commit and push changed files back to GitHub with this GitHub Action for the 80% use case.
+
 Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at [https://github.com/stefanzweifel/git-auto-commit-action](https://github.com/stefanzweifel/git-auto-commit-action).
 
 ## Versions
