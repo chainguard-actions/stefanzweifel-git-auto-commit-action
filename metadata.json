@@ -2,5 +2,6 @@
   "owner": "stefanzweifel",
   "name": "git-auto-commit-action",
   "visibility": "internal",
-  "description": "Automatically commit and push changed files back to GitHub with this GitHub Action for the 80% use case."
+  "description": "Automatically commit and push changed files back to GitHub with this GitHub Action for the 80% use case.",
+  "block_publish": false
 }

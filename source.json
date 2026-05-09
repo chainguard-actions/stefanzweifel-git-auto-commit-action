@@ -1,4 +1,6 @@
 {
-  "upstream": "stefanzweifel/git-auto-commit-action",
-  "version": "v7.1.0"
+  "owner": "stefanzweifel",
+  "repo": "git-auto-commit-action",
+  "version": "",
+  "url": "https://github.com/stefanzweifel/git-auto-commit-action"
 }
