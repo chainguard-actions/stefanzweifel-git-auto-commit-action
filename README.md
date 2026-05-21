@@ -8,7 +8,7 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 
 | Version | Tag | Upstream commit |
 |---------|-----|-----------------|
-| v7.1.0 | [`v7.1.0`](https://github.com/chainguard-actions/stefanzweifel--git-auto-commit-action/tree/v7.1.0) | — |
+| v7.1.0 | [`v7.1.0`](https://github.com/chainguard-actions/stefanzweifel-git-auto-commit-action/tree/v7.1.0) | — |
 
 ## Privacy
 
