@@ -1,0 +1,24 @@
+name: Lint Code Base
+
+on: push
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  build:
+    name: Lint Code Base
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
+
+      - name: Lint Code Base
+        uses: github/super-linter@985ef206aaca4d560cb9ee2af2b42ba44adc1d55 # v4
+        env:
+          VALIDATE_ALL_CODEBASE: false
+          VALIDATE_MARKDOWN: false
+          DEFAULT_BRANCH: master
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
