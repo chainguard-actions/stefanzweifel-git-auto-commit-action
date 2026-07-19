@@ -5,62 +5,65 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    env:
-      GITHUB_REF: refs/heads/act-harness
-      GITHUB_EVENT_NAME: push
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Configure git and set up local remote
+      - name: Set up local bare git remote to allow push
         run: |
-          git config user.email "test@example.com"
-          git config user.name "Test User"
-          # Create a local bare repo to act as the remote so git push succeeds
-          git init --bare /tmp/remote-repo.git
-          git remote set-url origin /tmp/remote-repo.git
+          # Create a bare repo to act as the remote so git push succeeds locally
+          git init --bare /tmp/fake-remote.git
+          git remote set-url origin /tmp/fake-remote.git
+          # Push current state to the fake remote so it has the branch
           git push origin HEAD:act-harness
 
       - name: Create files - one matching pattern, one not
         run: |
-          echo "should be committed $(date)" > output.log
-          echo "should NOT be committed $(date)" > output.txt
+          echo "matched file $(date)" > tests/pattern-match.log
+          echo "unmatched file $(date)" > tests/pattern-nomatch.txt
 
       - id: action
         uses: .
         with:
-          commit_message: "Test: commit only log files"
-          branch: act-harness
-          file_pattern: "*.log"
+          commit_message: "Test: file pattern commit"
+          branch: "act-harness"
+          file_pattern: "tests/*.log"
           commit_user_name: "Test Bot"
-          commit_user_email: "bot@example.com"
-          commit_author: "Test Bot <bot@example.com>"
+          commit_user_email: "testbot@example.com"
+          commit_author: "Test Bot <testbot@example.com>"
           skip_fetch: "true"
           skip_checkout: "true"
+          push_options: "--force"
 
-      - name: Assert changes_detected is true (log file was staged)
+      - name: Assert changes_detected is true (matched file was staged)
         env:
-          ACTUAL: ${{ steps.action.outputs.changes_detected }}
+          CHANGES: ${{ steps.action.outputs.changes_detected }}
         run: |
-          echo "actual: $ACTUAL"
-          if [ "$ACTUAL" != "true" ]; then
-            echo "FAIL: expected changes_detected to be 'true', got '$ACTUAL'"
+          echo "changes_detected: $CHANGES"
+          if [ "$CHANGES" != "true" ]; then
+            echo "FAIL: expected changes_detected to be 'true', got '$CHANGES'"
             exit 1
           fi
-          echo "PASS: changes_detected is true"
+          echo "PASS"
 
-      - name: Assert only log file was committed, not txt file
+      - name: Assert only the matched file was committed
         env:
-          COMMIT_HASH: ${{ steps.action.outputs.commit_hash }}
+          HASH: ${{ steps.action.outputs.commit_hash }}
         run: |
-          echo "commit_hash: $COMMIT_HASH"
-          COMMITTED_FILES=$(git diff-tree --no-commit-id -r --name-only "$COMMIT_HASH")
+          echo "commit_hash: $HASH"
+          if [ -z "$HASH" ]; then
+            echo "FAIL: expected commit_hash to be set"
+            exit 1
+          fi
+          # Check that the .log file was committed
+          COMMITTED_FILES=$(git show --name-only --pretty="" "$HASH")
           echo "committed files: $COMMITTED_FILES"
-          if ! echo "$COMMITTED_FILES" | grep -q "output.log"; then
-            echo "FAIL: expected output.log to be in the commit"
+          if ! echo "$COMMITTED_FILES" | grep -q "pattern-match.log"; then
+            echo "FAIL: expected pattern-match.log to be in the commit"
             exit 1
           fi
-          if echo "$COMMITTED_FILES" | grep -q "output.txt"; then
-            echo "FAIL: output.txt should NOT be in the commit (doesn't match *.log pattern)"
+          # Check that the .txt file was NOT committed
+          if echo "$COMMITTED_FILES" | grep -q "pattern-nomatch.txt"; then
+            echo "FAIL: pattern-nomatch.txt should NOT be in the commit"
             exit 1
           fi
-          echo "PASS: only *.log files were committed"
+          echo "PASS"
