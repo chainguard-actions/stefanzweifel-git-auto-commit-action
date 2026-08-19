@@ -1,0 +1,74 @@
+name: Test Skip Dirty Check
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up a fake local repository with remote
+        run: |
+          git config --global user.email "test@example.com"
+          git config --global user.name "Test User"
+
+          # Create a bare remote repository
+          rm -rf /tmp/fake-remote-skip-dirty
+          git init --bare /tmp/fake-remote-skip-dirty
+
+          # Create a local repository cloned from the remote
+          rm -rf /tmp/fake-local-skip-dirty
+          git clone /tmp/fake-remote-skip-dirty /tmp/fake-local-skip-dirty
+          cd /tmp/fake-local-skip-dirty
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+          # Create an initial commit so the repo is not empty
+          echo "initial" > initial.txt
+          git add initial.txt
+          git commit -m "Initial commit"
+          git push origin HEAD:refs/heads/main
+
+          # Create a file and stage it so git diff --staged is non-empty
+          echo "forced commit content" > forced.txt
+          git add forced.txt
+
+      - id: action
+        uses: .
+        with:
+          commit_message: "Forced commit via skip_dirty_check"
+          branch: main
+          file_pattern: "forced.txt"
+          repository: /tmp/fake-local-skip-dirty
+          commit_user_name: "Test Bot"
+          commit_user_email: "bot@example.com"
+          commit_author: "Test Bot <bot@example.com>"
+          skip_dirty_check: "true"
+          skip_fetch: "true"
+          skip_checkout: "true"
+          skip_push: "true"
+
+      - name: Assert changes_detected is true
+        env:
+          ACTUAL: ${{ steps.action.outputs.changes_detected }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ "$ACTUAL" != "true" ]; then
+            echo "FAIL: expected changes_detected=true but got '$ACTUAL'"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert commit_hash is set
+        env:
+          ACTUAL: ${{ steps.action.outputs.commit_hash }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: expected commit_hash to be non-empty"
+            exit 1
+          fi
+          echo "PASS"

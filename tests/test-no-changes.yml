@@ -1,0 +1,69 @@
+name: Test No Changes Detected
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up a clean fake local repository with remote
+        run: |
+          git config --global user.email "test@example.com"
+          git config --global user.name "Test User"
+
+          # Create a bare remote repository
+          rm -rf /tmp/fake-remote-no-changes
+          git init --bare /tmp/fake-remote-no-changes
+
+          # Create a local repository cloned from the remote
+          rm -rf /tmp/fake-local-no-changes
+          git clone /tmp/fake-remote-no-changes /tmp/fake-local-no-changes
+          cd /tmp/fake-local-no-changes
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+          # Create an initial commit so the repo is not empty
+          echo "initial" > initial.txt
+          git add initial.txt
+          git commit -m "Initial commit"
+          git push origin HEAD:refs/heads/main
+          # Repository is now clean - no untracked or modified files
+
+      - id: action
+        uses: .
+        with:
+          commit_message: "Auto commit test"
+          branch: main
+          repository: /tmp/fake-local-no-changes
+          commit_user_name: "Test Bot"
+          commit_user_email: "bot@example.com"
+          commit_author: "Test Bot <bot@example.com>"
+          skip_fetch: "true"
+          skip_checkout: "true"
+          skip_push: "true"
+
+      - name: Assert changes_detected is false
+        env:
+          ACTUAL: ${{ steps.action.outputs.changes_detected }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ "$ACTUAL" != "false" ]; then
+            echo "FAIL: expected changes_detected=false but got '$ACTUAL'"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert commit_hash is not set
+        env:
+          ACTUAL: ${{ steps.action.outputs.commit_hash }}
+        run: |
+          echo "actual: '$ACTUAL'"
+          if [ -n "$ACTUAL" ]; then
+            echo "FAIL: expected commit_hash to be empty but got '$ACTUAL'"
+            exit 1
+          fi
+          echo "PASS"

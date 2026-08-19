@@ -1,0 +1,97 @@
+name: Test Changes Detected and Committed
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up a fake local repository with remote
+        run: |
+          git config --global user.email "test@example.com"
+          git config --global user.name "Test User"
+
+          # Create a bare remote repository
+          rm -rf /tmp/fake-remote-changes
+          git init --bare /tmp/fake-remote-changes
+
+          # Create a local repository cloned from the remote
+          rm -rf /tmp/fake-local-changes
+          git clone /tmp/fake-remote-changes /tmp/fake-local-changes
+          cd /tmp/fake-local-changes
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+          # Create an initial commit so the repo is not empty
+          echo "initial" > initial.txt
+          git add initial.txt
+          git commit -m "Initial commit"
+          git push origin HEAD:refs/heads/main
+
+          # Now create a new file to be committed by the action
+          echo "auto-generated content $(date)" > auto-generated.txt
+
+      - id: action
+        uses: .
+        with:
+          commit_message: "Auto commit: add auto-generated.txt"
+          branch: main
+          file_pattern: "auto-generated.txt"
+          repository: /tmp/fake-local-changes
+          commit_user_name: "Test Bot"
+          commit_user_email: "bot@example.com"
+          commit_author: "Test Bot <bot@example.com>"
+          skip_fetch: "true"
+          skip_checkout: "true"
+          skip_push: "true"
+
+      - name: Assert changes_detected is true
+        env:
+          ACTUAL: ${{ steps.action.outputs.changes_detected }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ "$ACTUAL" != "true" ]; then
+            echo "FAIL: expected changes_detected=true but got '$ACTUAL'"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert commit_hash is set
+        env:
+          ACTUAL: ${{ steps.action.outputs.commit_hash }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: expected commit_hash to be non-empty"
+            exit 1
+          fi
+          # Verify it looks like a git SHA (40 hex chars)
+          if ! echo "$ACTUAL" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "FAIL: commit_hash '$ACTUAL' does not look like a valid SHA"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert commit message is correct
+        run: |
+          cd /tmp/fake-local-changes
+          LAST_MSG="$(git log -1 --pretty=%s)"
+          echo "last commit message: $LAST_MSG"
+          if [ "$LAST_MSG" != "Auto commit: add auto-generated.txt" ]; then
+            echo "FAIL: expected commit message 'Auto commit: add auto-generated.txt' but got '$LAST_MSG'"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert committed file exists in git
+        run: |
+          cd /tmp/fake-local-changes
+          if ! git show HEAD:auto-generated.txt > /dev/null 2>&1; then
+            echo "FAIL: auto-generated.txt not found in last commit"
+            exit 1
+          fi
+          echo "PASS"

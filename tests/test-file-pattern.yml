@@ -1,0 +1,80 @@
+name: Test File Pattern
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up a fake local repository with remote
+        run: |
+          git config --global user.email "test@example.com"
+          git config --global user.name "Test User"
+
+          # Create a bare remote repository
+          rm -rf /tmp/fake-remote-file-pattern
+          git init --bare /tmp/fake-remote-file-pattern
+
+          # Create a local repository cloned from the remote
+          rm -rf /tmp/fake-local-file-pattern
+          git clone /tmp/fake-remote-file-pattern /tmp/fake-local-file-pattern
+          cd /tmp/fake-local-file-pattern
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+          # Create an initial commit so the repo is not empty
+          echo "initial" > initial.txt
+          git add initial.txt
+          git commit -m "Initial commit"
+          git push origin HEAD:refs/heads/main
+
+          # Create files - one matching pattern, one not
+          echo "should be committed" > match.log
+          echo "should NOT be committed" > nomatch.txt
+
+      - id: action
+        uses: .
+        with:
+          commit_message: "Commit only log files"
+          branch: main
+          file_pattern: "*.log"
+          repository: /tmp/fake-local-file-pattern
+          commit_user_name: "Test Bot"
+          commit_user_email: "bot@example.com"
+          commit_author: "Test Bot <bot@example.com>"
+          skip_fetch: "true"
+          skip_checkout: "true"
+          skip_push: "true"
+
+      - name: Assert changes_detected is true (log file was staged)
+        env:
+          ACTUAL: ${{ steps.action.outputs.changes_detected }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ "$ACTUAL" != "true" ]; then
+            echo "FAIL: expected changes_detected=true but got '$ACTUAL'"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert match.log was committed
+        run: |
+          cd /tmp/fake-local-file-pattern
+          if ! git show HEAD:match.log > /dev/null 2>&1; then
+            echo "FAIL: match.log not found in last commit"
+            exit 1
+          fi
+          echo "PASS: match.log committed"
+
+      - name: Assert nomatch.txt was NOT committed
+        run: |
+          cd /tmp/fake-local-file-pattern
+          if git show HEAD:nomatch.txt > /dev/null 2>&1; then
+            echo "FAIL: nomatch.txt should not have been committed"
+            exit 1
+          fi
+          echo "PASS: nomatch.txt not committed"

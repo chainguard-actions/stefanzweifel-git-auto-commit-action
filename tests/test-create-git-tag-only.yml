@@ -1,0 +1,80 @@
+name: Test Create Git Tag Only
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up a fake local repository with remote
+        run: |
+          git config --global user.email "test@example.com"
+          git config --global user.name "Test User"
+
+          # Create a bare remote repository
+          rm -rf /tmp/fake-remote-tag-only
+          git init --bare /tmp/fake-remote-tag-only
+
+          # Create a local repository cloned from the remote
+          rm -rf /tmp/fake-local-tag-only
+          git clone /tmp/fake-remote-tag-only /tmp/fake-local-tag-only
+          cd /tmp/fake-local-tag-only
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+          # Create an initial commit so the repo is not empty
+          echo "initial" > initial.txt
+          git add initial.txt
+          git commit -m "Initial commit"
+          git push origin HEAD:refs/heads/main
+
+      - id: action
+        uses: .
+        with:
+          create_git_tag_only: "true"
+          tag_name: "v9.9.9-test"
+          tagging_message: "Test release tag"
+          branch: main
+          repository: /tmp/fake-local-tag-only
+          commit_user_name: "Test Bot"
+          commit_user_email: "bot@example.com"
+          skip_fetch: "true"
+          skip_checkout: "true"
+          skip_push: "true"
+
+      - name: Assert create_git_tag_only output is true
+        env:
+          ACTUAL: ${{ steps.action.outputs.create_git_tag_only }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ "$ACTUAL" != "true" ]; then
+            echo "FAIL: expected create_git_tag_only=true but got '$ACTUAL'"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert changes_detected is NOT set (tag-only mode)
+        env:
+          ACTUAL: ${{ steps.action.outputs.changes_detected }}
+        run: |
+          echo "actual: '$ACTUAL'"
+          # In create_git_tag_only mode, changes_detected should not be set
+          if [ "$ACTUAL" = "true" ] || [ "$ACTUAL" = "false" ]; then
+            echo "FAIL: changes_detected should not be set in create_git_tag_only mode, got '$ACTUAL'"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert tag was created
+        run: |
+          cd /tmp/fake-local-tag-only
+          if ! git tag | grep -q "v9.9.9-test"; then
+            echo "FAIL: tag v9.9.9-test was not created"
+            git tag
+            exit 1
+          fi
+          echo "PASS: tag v9.9.9-test exists"

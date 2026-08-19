@@ -1,0 +1,91 @@
+name: Test Hooks Execution
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up a fake local repository with remote
+        run: |
+          git config --global user.email "test@example.com"
+          git config --global user.name "Test User"
+
+          # Create a bare remote repository
+          rm -rf /tmp/fake-remote-hooks
+          git init --bare /tmp/fake-remote-hooks
+
+          # Create a local repository cloned from the remote
+          rm -rf /tmp/fake-local-hooks
+          git clone /tmp/fake-remote-hooks /tmp/fake-local-hooks
+          cd /tmp/fake-local-hooks
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+          # Create an initial commit so the repo is not empty
+          echo "initial" > initial.txt
+          git add initial.txt
+          git commit -m "Initial commit"
+          git push origin HEAD:refs/heads/main
+
+          # Create a file to trigger a commit
+          echo "hook test content" > hook-test.txt
+
+      - id: action
+        uses: .
+        with:
+          commit_message: "Commit with hooks"
+          branch: main
+          file_pattern: "hook-test.txt hook-before-add.txt"
+          repository: /tmp/fake-local-hooks
+          commit_user_name: "Test Bot"
+          commit_user_email: "bot@example.com"
+          commit_author: "Test Bot <bot@example.com>"
+          before_add_hook: "echo 'before_add_hook ran' > /tmp/fake-local-hooks/hook-before-add.txt"
+          after_commit_hook: "echo 'after_commit_hook ran' > /tmp/fake-local-hooks/hook-after-commit.txt"
+          skip_fetch: "true"
+          skip_checkout: "true"
+          skip_push: "true"
+
+      - name: Assert changes_detected is true
+        env:
+          ACTUAL: ${{ steps.action.outputs.changes_detected }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ "$ACTUAL" != "true" ]; then
+            echo "FAIL: expected changes_detected=true but got '$ACTUAL'"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert before_add_hook ran
+        run: |
+          if [ ! -f "/tmp/fake-local-hooks/hook-before-add.txt" ]; then
+            echo "FAIL: hook-before-add.txt not found — before_add_hook did not run"
+            exit 1
+          fi
+          CONTENT="$(cat /tmp/fake-local-hooks/hook-before-add.txt)"
+          echo "hook-before-add.txt content: $CONTENT"
+          if ! echo "$CONTENT" | grep -q "before_add_hook ran"; then
+            echo "FAIL: unexpected content in hook-before-add.txt"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert after_commit_hook ran
+        run: |
+          if [ ! -f "/tmp/fake-local-hooks/hook-after-commit.txt" ]; then
+            echo "FAIL: hook-after-commit.txt not found — after_commit_hook did not run"
+            exit 1
+          fi
+          CONTENT="$(cat /tmp/fake-local-hooks/hook-after-commit.txt)"
+          echo "hook-after-commit.txt content: $CONTENT"
+          if ! echo "$CONTENT" | grep -q "after_commit_hook ran"; then
+            echo "FAIL: unexpected content in hook-after-commit.txt"
+            exit 1
+          fi
+          echo "PASS"
