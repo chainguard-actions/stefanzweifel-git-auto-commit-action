@@ -10,6 +10,7 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 |---------|-----|-----------------|
 | v4 | [`v4`](https://github.com/chainguard-actions/stefanzweifel-git-auto-commit-action/tree/v4) | [`3ea6ae1`](https://github.com/stefanzweifel/git-auto-commit-action/commit/3ea6ae190baf489ba007f7c92608f33ce20ef04a) |
 | v7.1.0 | [`v7.1.0`](https://github.com/chainguard-actions/stefanzweifel-git-auto-commit-action/tree/v7.1.0) | — |
+| v7.2.0 | [`v7.2.0`](https://github.com/chainguard-actions/stefanzweifel-git-auto-commit-action/tree/v7.2.0) | [`4a55954`](https://github.com/stefanzweifel/git-auto-commit-action/commit/4a55954c782fc1ea30b9056cd3e7a2b40ca8887d) |
 
 ## Privacy
 
