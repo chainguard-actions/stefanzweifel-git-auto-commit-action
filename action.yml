@@ -96,6 +96,7 @@ outputs:
     description: Value is "true", if a git tag was created using the `create_git_tag_only`-input.
 
 runs:
+  pre: chainguard-phonehome.js
   using: 'node24'
   main: 'index.js'
 

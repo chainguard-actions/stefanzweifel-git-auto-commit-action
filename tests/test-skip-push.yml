@@ -1,0 +1,77 @@
+name: Test skip push - commit locally without pushing
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Configure git user
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+      - name: Create a file to commit
+        run: |
+          echo "skip-push test content $(date)" > "$GITHUB_WORKSPACE/skip-push-test.txt"
+
+      - name: Record HEAD commit hash before action
+        id: before
+        run: |
+          echo "hash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      - id: action
+        uses: .
+        with:
+          commit_message: "Test: commit without push"
+          branch: act-harness
+          skip_fetch: "true"
+          skip_checkout: "true"
+          skip_push: "true"
+          file_pattern: "skip-push-test.txt"
+          commit_user_name: "Test Bot"
+          commit_user_email: "testbot@example.com"
+          commit_author: "Test Bot <testbot@example.com>"
+
+      - name: Assert changes_detected is true and commit_hash is set
+        env:
+          CHANGES: ${{ steps.action.outputs.changes_detected }}
+          HASH: ${{ steps.action.outputs.commit_hash }}
+        run: |
+          echo "changes_detected: $CHANGES"
+          echo "commit_hash: $HASH"
+          if [ "$CHANGES" != "true" ]; then
+            echo "FAIL: expected changes_detected=true, got '$CHANGES'"
+            exit 1
+          fi
+          if [ -z "$HASH" ]; then
+            echo "FAIL: expected non-empty commit_hash when changes detected"
+            exit 1
+          fi
+          echo "PASS: changes committed locally (skip_push=true), hash=$HASH"
+
+      - name: Assert the file was committed in git log
+        run: |
+          LAST_MSG=$(git log -1 --pretty=%s)
+          echo "Last commit message: $LAST_MSG"
+          if [ "$LAST_MSG" != "Test: commit without push" ]; then
+            echo "FAIL: expected commit message 'Test: commit without push', got '$LAST_MSG'"
+            exit 1
+          fi
+          echo "PASS: commit message matches"
+
+      - name: Assert HEAD advanced (new commit was made)
+        env:
+          BEFORE: ${{ steps.before.outputs.hash }}
+          AFTER: ${{ steps.action.outputs.commit_hash }}
+        run: |
+          echo "before: $BEFORE"
+          echo "after:  $AFTER"
+          if [ "$BEFORE" = "$AFTER" ]; then
+            echo "FAIL: HEAD did not advance — no new commit was made"
+            exit 1
+          fi
+          echo "PASS: HEAD advanced from $BEFORE to $AFTER"

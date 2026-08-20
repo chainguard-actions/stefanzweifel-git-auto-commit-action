@@ -1,0 +1,45 @@
+name: Test no changes detected
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Configure git user
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+      - id: action
+        uses: .
+        with:
+          commit_message: "Test: no changes commit"
+          branch: act-harness
+          skip_fetch: "true"
+          skip_checkout: "true"
+          skip_push: "true"
+          file_pattern: "this-file-does-not-exist-xyz.txt"
+          commit_user_name: "Test Bot"
+          commit_user_email: "testbot@example.com"
+          commit_author: "Test Bot <testbot@example.com>"
+
+      - name: Assert changes_detected is false
+        env:
+          CHANGES: ${{ steps.action.outputs.changes_detected }}
+          HASH: ${{ steps.action.outputs.commit_hash }}
+        run: |
+          echo "changes_detected: $CHANGES"
+          echo "commit_hash: $HASH"
+          if [ "$CHANGES" != "false" ]; then
+            echo "FAIL: expected changes_detected=false, got '$CHANGES'"
+            exit 1
+          fi
+          if [ -n "$HASH" ]; then
+            echo "FAIL: expected empty commit_hash when no changes, got '$HASH'"
+            exit 1
+          fi
+          echo "PASS"
