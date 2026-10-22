@@ -1,0 +1,73 @@
+name: Test file_pattern with skip_push
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up isolated test repository with local remote
+        run: |
+          set -e
+          REMOTE=/tmp/gac-remote.git
+          rm -rf "$REMOTE" "$GITHUB_WORKSPACE/test-repo"
+          git init --bare "$REMOTE"
+          git --git-dir="$REMOTE" symbolic-ref HEAD refs/heads/main
+          mkdir -p "$GITHUB_WORKSPACE/test-repo"
+          cd "$GITHUB_WORKSPACE/test-repo"
+          git init
+          git symbolic-ref HEAD refs/heads/main
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+          echo "hello" > README.md
+          git add README.md
+          git commit -m "initial commit"
+          git remote add origin "file://$REMOTE"
+          git push -u origin main
+          echo "txt change" > changed.txt
+          echo "js change" > other.js
+      - id: action
+        uses: .
+        with:
+          repository: test-repo
+          branch: main
+          file_pattern: '*.txt'
+          skip_push: true
+          commit_author: "Test Author <author@example.com>"
+      - name: Assert only matching files committed and nothing pushed
+        env:
+          CHANGES: ${{ steps.action.outputs.changes_detected }}
+          HASH: ${{ steps.action.outputs.commit_hash }}
+        run: |
+          echo "changes_detected: $CHANGES"
+          echo "commit_hash: $HASH"
+          if [ "$CHANGES" != "true" ]; then
+            echo "FAIL: expected changes_detected=true"
+            exit 1
+          fi
+          cd "$GITHUB_WORKSPACE/test-repo"
+          if [ "$(git rev-parse HEAD)" != "$HASH" ]; then
+            echo "FAIL: commit_hash does not match HEAD"
+            exit 1
+          fi
+          FILES="$(git show --name-only --format= HEAD)"
+          echo "committed files: $FILES"
+          if ! echo "$FILES" | grep -qx 'changed.txt'; then
+            echo "FAIL: changed.txt not committed"
+            exit 1
+          fi
+          if echo "$FILES" | grep -qx 'other.js'; then
+            echo "FAIL: other.js should not be committed"
+            exit 1
+          fi
+          if ! git status --porcelain | grep -q 'other.js'; then
+            echo "FAIL: other.js should remain untracked"
+            exit 1
+          fi
+          REMOTE_HEAD="$(git --git-dir=/tmp/gac-remote.git rev-parse refs/heads/main)"
+          echo "remote head: $REMOTE_HEAD"
+          if [ "$REMOTE_HEAD" = "$HASH" ]; then
+            echo "FAIL: commit was pushed despite skip_push"
+            exit 1
+          fi
+          echo "PASS"

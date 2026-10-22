@@ -1,0 +1,65 @@
+name: Test commit with tag
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up isolated test repository with local remote
+        run: |
+          set -e
+          REMOTE=/tmp/gac-remote.git
+          rm -rf "$REMOTE" "$GITHUB_WORKSPACE/test-repo"
+          git init --bare "$REMOTE"
+          git --git-dir="$REMOTE" symbolic-ref HEAD refs/heads/main
+          mkdir -p "$GITHUB_WORKSPACE/test-repo"
+          cd "$GITHUB_WORKSPACE/test-repo"
+          git init
+          git symbolic-ref HEAD refs/heads/main
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+          echo "hello" > README.md
+          git add README.md
+          git commit -m "initial commit"
+          git remote add origin "file://$REMOTE"
+          git push -u origin main
+          echo "release" > release.txt
+      - id: action
+        uses: .
+        with:
+          repository: test-repo
+          branch: main
+          tag_name: v1.2.3
+          tagging_message: "Release v1.2.3"
+          commit_author: "Test Author <author@example.com>"
+      - name: Assert tag created and pushed
+        env:
+          CHANGES: ${{ steps.action.outputs.changes_detected }}
+          HASH: ${{ steps.action.outputs.commit_hash }}
+        run: |
+          echo "changes_detected: $CHANGES"
+          echo "commit_hash: $HASH"
+          if [ "$CHANGES" != "true" ]; then
+            echo "FAIL: expected changes_detected=true"
+            exit 1
+          fi
+          REMOTE=/tmp/gac-remote.git
+          TAG_COMMIT="$(git --git-dir=$REMOTE rev-parse 'refs/tags/v1.2.3^{commit}' 2>/dev/null || true)"
+          echo "remote tag commit: $TAG_COMMIT"
+          if [ "$TAG_COMMIT" != "$HASH" ]; then
+            echo "FAIL: tag v1.2.3 not pushed or points to wrong commit"
+            exit 1
+          fi
+          TYPE="$(git --git-dir=$REMOTE cat-file -t refs/tags/v1.2.3)"
+          if [ "$TYPE" != "tag" ]; then
+            echo "FAIL: expected annotated tag, got $TYPE"
+            exit 1
+          fi
+          MSG="$(git --git-dir=$REMOTE tag -l --format='%(contents:subject)' v1.2.3)"
+          echo "tag message: $MSG"
+          if [ "$MSG" != "Release v1.2.3" ]; then
+            echo "FAIL: unexpected tag message"
+            exit 1
+          fi
+          echo "PASS"

@@ -1,0 +1,71 @@
+name: Test create_git_tag_only
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up isolated test repository with local remote
+        run: |
+          set -e
+          REMOTE=/tmp/gac-remote.git
+          rm -rf "$REMOTE" "$GITHUB_WORKSPACE/test-repo"
+          git init --bare "$REMOTE"
+          git --git-dir="$REMOTE" symbolic-ref HEAD refs/heads/main
+          mkdir -p "$GITHUB_WORKSPACE/test-repo"
+          cd "$GITHUB_WORKSPACE/test-repo"
+          git init
+          git symbolic-ref HEAD refs/heads/main
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+          echo "hello" > README.md
+          git add README.md
+          git commit -m "initial commit"
+          git remote add origin "file://$REMOTE"
+          git push -u origin main
+          git rev-parse HEAD > /tmp/initial-head
+          # A dirty file that must NOT be committed in tag-only mode
+          echo "dirty" > dirty.txt
+      - id: action
+        uses: .
+        with:
+          repository: test-repo
+          branch: main
+          create_git_tag_only: true
+          tag_name: v2.0.0
+          tagging_message: "Tag only v2.0.0"
+      - name: Assert tag only, no commit
+        env:
+          TAG_ONLY: ${{ steps.action.outputs.create_git_tag_only }}
+          CHANGES: ${{ steps.action.outputs.changes_detected }}
+          HASH: ${{ steps.action.outputs.commit_hash }}
+        run: |
+          echo "create_git_tag_only: $TAG_ONLY"
+          echo "changes_detected: '$CHANGES'"
+          echo "commit_hash: '$HASH'"
+          if [ "$TAG_ONLY" != "true" ]; then
+            echo "FAIL: expected create_git_tag_only=true"
+            exit 1
+          fi
+          if [ -n "$CHANGES" ] || [ -n "$HASH" ]; then
+            echo "FAIL: changes_detected/commit_hash should be unset in tag-only mode"
+            exit 1
+          fi
+          INITIAL="$(cat /tmp/initial-head)"
+          cd "$GITHUB_WORKSPACE/test-repo"
+          if [ "$(git rev-parse HEAD)" != "$INITIAL" ]; then
+            echo "FAIL: a commit was created"
+            exit 1
+          fi
+          TAG_COMMIT="$(git --git-dir=/tmp/gac-remote.git rev-parse 'refs/tags/v2.0.0^{commit}' 2>/dev/null || true)"
+          echo "remote tag commit: $TAG_COMMIT"
+          if [ "$TAG_COMMIT" != "$INITIAL" ]; then
+            echo "FAIL: tag v2.0.0 not pushed to initial commit"
+            exit 1
+          fi
+          if ! git status --porcelain | grep -q 'dirty.txt'; then
+            echo "FAIL: dirty.txt should remain uncommitted"
+            exit 1
+          fi
+          echo "PASS"

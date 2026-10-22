@@ -1,0 +1,70 @@
+name: Test hooks
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up isolated test repository with local remote
+        run: |
+          set -e
+          REMOTE=/tmp/gac-remote.git
+          rm -rf "$REMOTE" "$GITHUB_WORKSPACE/test-repo" /tmp/hooks.log
+          git init --bare "$REMOTE"
+          git --git-dir="$REMOTE" symbolic-ref HEAD refs/heads/main
+          mkdir -p "$GITHUB_WORKSPACE/test-repo"
+          cd "$GITHUB_WORKSPACE/test-repo"
+          git init
+          git symbolic-ref HEAD refs/heads/main
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+          echo "hello" > README.md
+          git add README.md
+          git commit -m "initial commit"
+          git remote add origin "file://$REMOTE"
+          git push -u origin main
+          echo "change" > change.txt
+      - id: action
+        uses: .
+        with:
+          repository: test-repo
+          branch: main
+          commit_author: "Test Author <author@example.com>"
+          before_add_hook: 'echo before_add >> /tmp/hooks.log; echo "from hook" > hook-generated.txt'
+          after_add_hook: 'echo after_add >> /tmp/hooks.log'
+          before_commit_hook: 'echo before_commit >> /tmp/hooks.log'
+          after_commit_hook: 'echo after_commit >> /tmp/hooks.log'
+          before_push_hook: 'echo before_push >> /tmp/hooks.log'
+          after_push_hook: 'echo after_push >> /tmp/hooks.log'
+      - name: Assert hooks ran in order
+        env:
+          CHANGES: ${{ steps.action.outputs.changes_detected }}
+        run: |
+          echo "changes_detected: $CHANGES"
+          echo "hooks.log:"
+          cat /tmp/hooks.log || true
+          if [ "$CHANGES" != "true" ]; then
+            echo "FAIL: expected changes_detected=true"
+            exit 1
+          fi
+          EXPECTED="before_add
+          after_add
+          before_commit
+          after_commit
+          before_push
+          after_push"
+          EXPECTED="$(echo "$EXPECTED" | sed 's/^ *//')"
+          ACTUAL="$(cat /tmp/hooks.log)"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "FAIL: hooks did not run in expected order"
+            exit 1
+          fi
+          cd "$GITHUB_WORKSPACE/test-repo"
+          FILES="$(git show --name-only --format= HEAD)"
+          echo "committed files: $FILES"
+          if ! echo "$FILES" | grep -qx 'hook-generated.txt'; then
+            echo "FAIL: file created by before_add_hook should be committed"
+            exit 1
+          fi
+          echo "PASS"

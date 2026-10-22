@@ -1,0 +1,53 @@
+name: Test no changes detected
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up isolated clean test repository with local remote
+        run: |
+          set -e
+          REMOTE=/tmp/gac-remote.git
+          rm -rf "$REMOTE" "$GITHUB_WORKSPACE/test-repo"
+          git init --bare "$REMOTE"
+          git --git-dir="$REMOTE" symbolic-ref HEAD refs/heads/main
+          mkdir -p "$GITHUB_WORKSPACE/test-repo"
+          cd "$GITHUB_WORKSPACE/test-repo"
+          git init
+          git symbolic-ref HEAD refs/heads/main
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+          echo "hello" > README.md
+          git add README.md
+          git commit -m "initial commit"
+          git remote add origin "file://$REMOTE"
+          git push -u origin main
+          git rev-parse HEAD > /tmp/initial-head
+      - id: action
+        uses: .
+        with:
+          repository: test-repo
+          branch: main
+      - name: Assert nothing committed
+        env:
+          CHANGES: ${{ steps.action.outputs.changes_detected }}
+          HASH: ${{ steps.action.outputs.commit_hash }}
+        run: |
+          echo "changes_detected: $CHANGES"
+          echo "commit_hash: $HASH"
+          if [ "$CHANGES" != "false" ]; then
+            echo "FAIL: expected changes_detected=false"
+            exit 1
+          fi
+          if [ -n "$HASH" ]; then
+            echo "FAIL: expected empty commit_hash"
+            exit 1
+          fi
+          cd "$GITHUB_WORKSPACE/test-repo"
+          if [ "$(git rev-parse HEAD)" != "$(cat /tmp/initial-head)" ]; then
+            echo "FAIL: HEAD moved"
+            exit 1
+          fi
+          echo "PASS"

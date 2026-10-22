@@ -1,0 +1,86 @@
+name: Test basic commit and push
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up isolated test repository with local remote
+        run: |
+          set -e
+          REMOTE=/tmp/gac-remote.git
+          rm -rf "$REMOTE" "$GITHUB_WORKSPACE/test-repo"
+          git init --bare "$REMOTE"
+          git --git-dir="$REMOTE" symbolic-ref HEAD refs/heads/main
+          mkdir -p "$GITHUB_WORKSPACE/test-repo"
+          cd "$GITHUB_WORKSPACE/test-repo"
+          git init
+          git symbolic-ref HEAD refs/heads/main
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+          echo "hello" > README.md
+          git add README.md
+          git commit -m "initial commit"
+          git remote add origin "file://$REMOTE"
+          git push -u origin main
+          # Make a change to be committed
+          echo "new content" > new-file.txt
+      - id: action
+        uses: .
+        with:
+          repository: test-repo
+          branch: main
+          commit_message: "Automated test commit"
+          commit_author: "Test Author <author@example.com>"
+      - name: Assert commit created and pushed
+        env:
+          CHANGES: ${{ steps.action.outputs.changes_detected }}
+          HASH: ${{ steps.action.outputs.commit_hash }}
+        run: |
+          set -e
+          echo "changes_detected: $CHANGES"
+          echo "commit_hash: $HASH"
+          if [ "$CHANGES" != "true" ]; then
+            echo "FAIL: expected changes_detected=true"
+            exit 1
+          fi
+          if ! echo "$HASH" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "FAIL: commit_hash is not a 40-char sha"
+            exit 1
+          fi
+          cd "$GITHUB_WORKSPACE/test-repo"
+          LOCAL_HEAD="$(git rev-parse HEAD)"
+          REMOTE_HEAD="$(git --git-dir=/tmp/gac-remote.git rev-parse refs/heads/main)"
+          echo "local: $LOCAL_HEAD remote: $REMOTE_HEAD"
+          if [ "$LOCAL_HEAD" != "$HASH" ] || [ "$REMOTE_HEAD" != "$HASH" ]; then
+            echo "FAIL: commit hash mismatch with local/remote HEAD"
+            exit 1
+          fi
+          MSG="$(git log -1 --format=%s)"
+          echo "message: $MSG"
+          if [ "$MSG" != "Automated test commit" ]; then
+            echo "FAIL: unexpected commit message"
+            exit 1
+          fi
+          AUTHOR="$(git log -1 --format='%an <%ae>')"
+          echo "author: $AUTHOR"
+          if [ "$AUTHOR" != "Test Author <author@example.com>" ]; then
+            echo "FAIL: unexpected author"
+            exit 1
+          fi
+          COMMITTER="$(git log -1 --format='%cn')"
+          echo "committer: $COMMITTER"
+          if [ "$COMMITTER" != "github-actions[bot]" ]; then
+            echo "FAIL: unexpected committer"
+            exit 1
+          fi
+          if ! git ls-tree -r --name-only HEAD | grep -qx 'new-file.txt'; then
+            echo "FAIL: new-file.txt not in commit"
+            exit 1
+          fi
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "FAIL: working tree not clean"
+            exit 1
+          fi
+          echo "PASS"
